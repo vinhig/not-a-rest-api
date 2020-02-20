@@ -1,8 +1,12 @@
 extern crate gl;
+extern crate image;
 
+use image::ColorType;
+use image::GenericImage;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::size_of;
+use std::os::raw::c_void;
 use std::ptr::null_mut;
 
 use gl::types::*;
@@ -15,12 +19,21 @@ type Flag = GLuint;
 type Status = GLint;
 type Shader = GLuint;
 type Program = GLuint;
+type Texture = GLuint;
+#[warn(dead_code)]
+pub const TEXTURE0: u32 = gl::TEXTURE0;
+#[warn(dead_code)]
+pub const TEXTURE1: u32 = gl::TEXTURE1;
+#[warn(dead_code)]
+pub const TEXTURE2: u32 = gl::TEXTURE2;
+#[warn(dead_code)]
+pub const TEXTURE3: u32 = gl::TEXTURE3;
 
 /// Why not just a GLuint ?
 /// We have to remember the size
 pub struct VertexArray {
     vertex_array: GLuint,
-    length: i32
+    length: i32,
 }
 
 /// Clears screen with a color.
@@ -77,7 +90,8 @@ unsafe fn compile_shader(shader_type: Flag, source: &str) -> Shader {
     // Create shader
     let shader: Shader = gl::CreateShader(shader_type);
     // Convert to C string
-    let source = CStr::from_bytes_with_nul_unchecked(source.as_bytes());
+    let source =
+        CStr::from_bytes_with_nul(source.as_bytes()).expect("Unable to properly read shader.");
     // .expect("Couldn't read properly given shader source code.");
     // Compile shader
     gl::ShaderSource(shader, 1, &source.as_ptr(), null());
@@ -113,9 +127,9 @@ pub fn gen_vertex_array(length: i32) -> VertexArray {
     unsafe {
         gl::GenVertexArrays(1, &mut vao);
     }
-    return VertexArray{
+    return VertexArray {
         vertex_array: vao,
-        length: length
+        length: length,
     };
 }
 
@@ -127,7 +141,12 @@ pub fn gen_buffer(vertex_array: &VertexArray, data: Vec<f32>, size: i32, attrib_
         gl::BindVertexArray(vertex_array.vertex_array);
         gl::GenBuffers(1, &mut buffer);
         gl::BindBuffer(gl::ARRAY_BUFFER, buffer);
-        gl::BufferData(gl::ARRAY_BUFFER, length, data.as_ptr() as *const GLvoid, gl::STATIC_DRAW);
+        gl::BufferData(
+            gl::ARRAY_BUFFER,
+            length,
+            data.as_ptr() as *const GLvoid,
+            gl::STATIC_DRAW,
+        );
         gl::EnableVertexAttribArray(attrib_index);
         gl::VertexAttribPointer(attrib_index, size, gl::FLOAT, 0, 0, null());
     }
@@ -138,5 +157,77 @@ pub fn draw_arrays(vertex_array: &VertexArray) {
     unsafe {
         gl::BindVertexArray(vertex_array.vertex_array);
         gl::DrawArrays(gl::TRIANGLES, 0, vertex_array.length);
+    }
+}
+
+/// Generate a texture.
+/// Empty texture for the moment.
+pub fn gen_empty_texture(width: i32, height: i32, empty: bool) -> Texture {
+    let mut texture: GLuint = 0;
+    unsafe {
+        gl::GenTextures(1, &mut texture);
+        gl::ActiveTexture(gl::TEXTURE0);
+        gl::BindTexture(gl::TEXTURE_2D, texture);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+        if !empty {
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::RGBA as i32,
+                width,
+                height,
+                0,
+                gl::RGBA,
+                gl::UNSIGNED_BYTE,
+                null(),
+            );
+        }
+    }
+    return texture;
+}
+
+/// Feed an image with data.
+pub fn tex_image_2d(image_path: &str) -> Texture {
+    let data = image::open(image_path).expect(&format!("Unable to open image {}.", image_path));
+    let mut flag: GLenum = 0;
+    // Get pixel format
+    if data.color() == ColorType::RGBA(8) {
+        flag = gl::RGBA;
+    } else if data.color() == ColorType::RGB(8) {
+        flag = gl::RGB;
+    } else {
+        panic!(format!("Unsupported pixel format {}.", image_path))
+    }
+    let rgb = data.raw_pixels();
+    let width = data.width() as i32;
+    let height = data.height() as i32;
+    // Get texture
+    println!("SALUT !!!");
+    let texture = gen_empty_texture(width, height, true);
+    unsafe {
+        println!("SALUT !!!");
+        gl::TexImage2D(
+            gl::TEXTURE_2D,
+            0,
+            flag as i32,
+            width,
+            height,
+            0,
+            flag,
+            gl::UNSIGNED_BYTE,
+            &rgb[0] as *const u8 as *const c_void,
+        );
+        gl::GenerateMipmap(gl::TEXTURE_2D);
+    }
+    return texture;
+}
+
+pub fn bind_texture(texture: Texture, slot: u32) {
+    unsafe {
+        gl::ActiveTexture(slot);
+        gl::BindTexture(gl::TEXTURE_2D, texture);
     }
 }

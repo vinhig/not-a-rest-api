@@ -1,7 +1,13 @@
-#version 430
+#version 330
 
 out vec4 fragColour;
 
+uniform sampler2D diffuseTexture;
+
+in vec2 oUV;
+
 void main() {
-    fragColour = vec4(1.0, 1.0, 1.0, 1.0);
+    vec4 diffuseColor = texture2D(diffuseTexture, oUV).rgba;
+    fragColour = diffuseColor;
 }
+
